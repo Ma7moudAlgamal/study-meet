@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# refrence mds
+studymeet-roadmap.md
+app-description.md
+
+/app-managment/
+
+/supabase/.temp/
