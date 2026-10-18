@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:users": "tsx scripts/seed-test-users.ts",
+    "test:phase02": "tsx scripts/test-phase02.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.6",
     "react": "19.2.8",
@@ -19,9 +22,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^18.0.8",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "supabase": "^2.121.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
