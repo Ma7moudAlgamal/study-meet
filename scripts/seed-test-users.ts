@@ -1,23 +1,22 @@
 import { createClient } from '@supabase/supabase-js'
 import dotenv from 'dotenv'
-dotenv.config({ path: '.env.local' })
+dotenv.config({ path: '.env.production' })
 
 // Uses your LOCAL supabase credentials — never run this against production
 const supabase = createClient(
-  'http://127.0.0.1:54321',
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, // the secret key, not publishable
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-// Hardcoded course IDs matching seed.sql
-const COURSES = {
-  CSC148: '00000000-0000-0000-0000-000000000001',
-  CSC207: '00000000-0000-0000-0000-000000000002',
-  CSC258: '00000000-0000-0000-0000-000000000003',
-  CSC263: '00000000-0000-0000-0000-000000000004',
-  MAT102: '00000000-0000-0000-0000-000000000005',
-  MAT232: '00000000-0000-0000-0000-000000000006',
-  STA256: '00000000-0000-0000-0000-000000000007',
+async function getCourseId(code: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select('id')
+    .eq('course_code', code)
+    .single()
+  if (error || !data) throw new Error(`Course not found: ${code}`)
+  return data.id
 }
 
 const TEST_USERS = [
@@ -28,7 +27,7 @@ const TEST_USERS = [
     last_name: 'Admin',
     gender: 'Male',
     is_admin: true,
-    courses: [COURSES.CSC207, COURSES.CSC148],
+    courseCodes: ['CSC207H5', 'CSC148H5'],
   },
   {
     email: 'bob.male@mail.utoronto.ca',
@@ -37,7 +36,7 @@ const TEST_USERS = [
     last_name: 'Male',
     gender: 'Male',
     is_admin: false,
-    courses: [COURSES.CSC207, COURSES.CSC148, COURSES.CSC258],
+    courseCodes: ['CSC207H5', 'CSC148H5', 'CSC258H5'],
   },
   {
     email: 'carol.female@mail.utoronto.ca',
@@ -46,7 +45,7 @@ const TEST_USERS = [
     last_name: 'Female',
     gender: 'Female',
     is_admin: false,
-    courses: [COURSES.CSC207, COURSES.MAT102],
+    courseCodes: ['CSC207H5', 'MAT102H5'],
   },
   {
     email: 'dana.female2@mail.utoronto.ca',
@@ -56,7 +55,7 @@ const TEST_USERS = [
     gender: 'Female',
     is_admin: false,
     // Intentionally different courses from Carol — tests course visibility
-    courses: [COURSES.CSC263, COURSES.MAT232],
+    courseCodes: ['CSC263H5', 'MAT232H5'],
   },
   {
     email: 'sam.prefernot@mail.utoronto.ca',
@@ -65,13 +64,34 @@ const TEST_USERS = [
     last_name: 'PreferNot',
     gender: 'Prefer not to say',
     is_admin: false,
-    courses: [COURSES.CSC207, COURSES.STA256],
+    courseCodes: ['CSC207H5', 'STA256H5'],
   },
 ]
 
 async function seedUsers() {
+  console.log('Fetching course IDs from database...')
+  
+  // Fetch all required course IDs dynamically inside the async function
+  const csc148 = await getCourseId('CSC148H5')
+  const csc207 = await getCourseId('CSC207H5')
+  const csc258 = await getCourseId('CSC258H5')
+  const csc263 = await getCourseId('CSC263H5')
+  const mat102 = await getCourseId('MAT102H5')
+  const mat232 = await getCourseId('MAT232H5')
+  const sta256 = await getCourseId('STA256H5')
+
+  const courseMap: Record<string, string> = {
+    'CSC148H5': csc148,
+    'CSC207H5': csc207,
+    'CSC258H5': csc258,
+    'CSC263H5': csc263,
+    'MAT102H5': mat102,
+    'MAT232H5': mat232,
+    'STA256H5': sta256,
+  }
+
   for (const user of TEST_USERS) {
-    console.log(`Creating ${user.email}...`)
+    console.log(`\nCreating ${user.email}...`)
 
     // createUser goes through Auth properly, which fires your
     // handle_new_user() trigger — same path as a real signup
@@ -108,8 +128,9 @@ async function seedUsers() {
       }
     }
 
-    // Enroll in courses
-    const enrollments = user.courses.map(courseId => ({
+    // Enroll in courses using mapped IDs
+    const userCourseIds = user.courseCodes.map(code => courseMap[code])
+    const enrollments = userCourseIds.map(courseId => ({
       user_id: userId,
       course_id: courseId,
     }))
@@ -121,7 +142,7 @@ async function seedUsers() {
     if (courseError) {
       console.error(`  ✗ Course enrollment error:`, courseError.message)
     } else {
-      console.log(`  ✓ Enrolled in ${user.courses.length} courses`)
+      console.log(`  ✓ Enrolled in ${user.courseCodes.length} courses`)
     }
   }
 

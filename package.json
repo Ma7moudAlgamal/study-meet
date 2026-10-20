@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "seed:users": "tsx scripts/seed-test-users.ts",
-    "test:phase02": "tsx scripts/test-phase02.ts"
+    "test:phase02": "tsx scripts/test-phase02.ts",
+    "test:cloud-cleanup": "tsx scripts/cloud-cleanup.ts",
+    "seed:delete-users": "tsx scripts/delete-seed-users.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

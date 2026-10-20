@@ -117,7 +117,7 @@ CREATE TRIGGER on_auth_user_created
 -- 4. COURSES & USER ENROLLMENTS
 --------------------------------------------------------------------------------
 CREATE TABLE courses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_code TEXT NOT NULL UNIQUE,
     course_title TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -170,7 +170,7 @@ CREATE TRIGGER on_user_course_deleted
 -- 5. STUDY SESSIONS & MEMBERSHIPS
 --------------------------------------------------------------------------------
 CREATE TABLE study_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     course_id UUID NOT NULL REFERENCES courses(id) ON DELETE RESTRICT,
     starts_at TIMESTAMPTZ NOT NULL,
@@ -455,7 +455,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 -- 7. MEMBER DEPARTURE — spot restoration + host succession (combined)
 --------------------------------------------------------------------------------
 CREATE TABLE outbound_notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_type TEXT NOT NULL,
     recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id UUID REFERENCES study_sessions(id) ON DELETE CASCADE,
@@ -520,7 +520,7 @@ CREATE TRIGGER on_member_departed
 -- 8. TRUST, SAFETY & NOTIFICATIONS
 --------------------------------------------------------------------------------
 CREATE TABLE reports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reported_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id UUID REFERENCES study_sessions(id) ON DELETE SET NULL,
@@ -535,7 +535,7 @@ CREATE TABLE reports (
 );
 
 CREATE TABLE warnings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     admin_id UUID REFERENCES users(id) ON DELETE SET NULL,
     report_id UUID REFERENCES reports(id) ON DELETE SET NULL,
@@ -544,7 +544,7 @@ CREATE TABLE warnings (
 );
 
 CREATE TABLE suspensions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     admin_id UUID REFERENCES users(id) ON DELETE SET NULL,
     severity suspension_severity NOT NULL DEFAULT 'standard',
@@ -557,7 +557,7 @@ CREATE TABLE suspensions (
 
 -- NEW: required by §5.2/§3.9.5, was entirely missing from the prototype.
 CREATE TABLE suspension_appeals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     suspension_id UUID NOT NULL REFERENCES suspensions(id) ON DELETE CASCADE,
     appeal_text TEXT NOT NULL CHECK (length(appeal_text) <= 300),
@@ -574,7 +574,7 @@ CREATE UNIQUE INDEX one_pending_appeal_per_suspension
 
 -- NEW: required by §3.8.3/§5.2, was entirely missing from the prototype.
 CREATE TABLE audit_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_id UUID REFERENCES users(id) ON DELETE SET NULL, -- nullable: system-triggered actions
     action_type TEXT NOT NULL,
     session_id UUID REFERENCES study_sessions(id) ON DELETE SET NULL,
@@ -628,7 +628,7 @@ CREATE TRIGGER on_appeal_resolved
     FOR EACH ROW EXECUTE FUNCTION handle_appeal_resolution();
 
 CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL CHECK (length(content) > 0),

@@ -10,10 +10,11 @@
 
 import dotenv from "dotenv";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+// import { supabase } from "@/lib/supabase";
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env.production" });
 
-const LOCAL_URL = "http://127.0.0.1:54321";
+const LOCAL_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -30,16 +31,53 @@ const admin = createClient(LOCAL_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// Course IDs — must match supabase/seed.sql exactly.
-const COURSE = {
-  CSC148: "00000000-0000-0000-0000-000000000001",
-  CSC207: "00000000-0000-0000-0000-000000000002",
-  CSC258: "00000000-0000-0000-0000-000000000003",
-  CSC263: "00000000-0000-0000-0000-000000000004",
-  MAT102: "00000000-0000-0000-0000-000000000005",
-  MAT232: "00000000-0000-0000-0000-000000000006",
-  STA256: "00000000-0000-0000-0000-000000000007",
-};
+
+/** Course IDs — loaded from the configured Supabase database. */
+let csc148: string;
+let csc207: string;
+let csc258: string;
+let csc263: string;
+let mat102: string;
+let mat232: string;
+let sta256: string;
+
+async function getCourseId(code: string): Promise<string> {
+  const { data, error } = await admin
+    .from("courses")
+    .select("id")
+    .eq("course_code", code)
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      `Course not found: ${code}. ${error?.message ?? ""}`
+    );
+  }
+
+  return data.id;
+}
+
+async function initializeCourseIds(): Promise<void> {
+  [
+    csc148,
+    csc207,
+    csc258,
+    csc263,
+    mat102,
+    mat232,
+    sta256,
+  ] = await Promise.all([
+    getCourseId("CSC148H5"),
+    getCourseId("CSC207H5"),
+    getCourseId("CSC258H5"),
+    getCourseId("CSC263H5"),
+    getCourseId("MAT102H5"),
+    getCourseId("MAT232H5"),
+    getCourseId("STA256H5"),
+  ]);
+
+  console.log("✓ Course IDs loaded successfully");
+}
 
 // ─── Test runner ────────────────────────────────────────────────────────────
 
@@ -105,7 +143,7 @@ async function makeSession(
 ): Promise<{ data: Record<string, any> | null; error: any }> {
   const base = {
     host_id: asUser.userId,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(24),
     ends_at: future(26),
     location: "Library",
@@ -164,7 +202,7 @@ async function testRLSVisibility(u: Record<string, UserHandle>) {
   // alice/carol's host cap during setup.
   const womenId = await adminInsertSession({
     host_id: u.alice.userId,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(100),
     ends_at: future(102),
     location: "Library",
@@ -175,7 +213,7 @@ async function testRLSVisibility(u: Record<string, UserHandle>) {
   });
   const menId = await adminInsertSession({
     host_id: u.bob.userId,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(110),
     ends_at: future(112),
     location: "Library",
@@ -187,7 +225,7 @@ async function testRLSVisibility(u: Record<string, UserHandle>) {
   // Session for CSC263 — dana is enrolled, others are not.
   const csc263Id = await adminInsertSession({
     host_id: u.dana.userId,
-    course_id: COURSE.CSC263,
+    course_id: csc263,
     starts_at: future(120),
     ends_at: future(122),
     location: "Library",
@@ -331,7 +369,7 @@ async function testSessionCreation(u: Record<string, UserHandle>) {
 
   // Non-enrolled course (bob is not in CSC263)
   const { error: courseErr } = await makeSession(u.bob, {
-    course_id: COURSE.CSC263,
+    course_id: csc263,
     starts_at: future(210),
     ends_at: future(212),
   });
@@ -394,12 +432,12 @@ async function testHostCap(u: Record<string, UserHandle>) {
   // Sam starts with 0 hosted sessions — safe to use here without
   // worrying about prior test pollution.
   const s1 = await makeSession(u.sam, {
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(300),
     ends_at: future(302),
   });
   const s2 = await makeSession(u.sam, {
-    course_id: COURSE.STA256,
+    course_id: sta256,
     starts_at: future(310),
     ends_at: future(312),
   });
@@ -407,7 +445,7 @@ async function testHostCap(u: Record<string, UserHandle>) {
   assert(!s2.error, "2nd hosted session accepted (at cap)");
 
   const s3 = await makeSession(u.sam, {
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(320),
     ends_at: future(322),
   });
@@ -426,7 +464,7 @@ async function testScheduleOverlap(u: Record<string, UserHandle>) {
 
   // Dana creates a base session 400–402 hrs from now.
   const base = await makeSession(u.dana, {
-    course_id: COURSE.CSC263,
+    course_id: csc263,
     starts_at: future(400),
     ends_at: future(402),
   });
@@ -434,7 +472,7 @@ async function testScheduleOverlap(u: Record<string, UserHandle>) {
 
   // Overlapping window (401–403) rejected.
   const overlap = await makeSession(u.dana, {
-    course_id: COURSE.MAT232,
+    course_id: mat232,
     starts_at: future(401),
     ends_at: future(403),
   });
@@ -442,7 +480,7 @@ async function testScheduleOverlap(u: Record<string, UserHandle>) {
 
   // Non-overlapping window (403–405) accepted.
   const noOverlap = await makeSession(u.dana, {
-    course_id: COURSE.MAT232,
+    course_id: mat232,
     starts_at: future(403),
     ends_at: future(405),
   });
@@ -557,13 +595,13 @@ async function testJoinSession(u: Record<string, UserHandle>) {
   // Schedule overlap: sam joins a session 540–542, then tries to join one at 541–543.
   const { data: samBase } = await makeSession(u.bob, {
     spots_total: 3,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(540),
     ends_at: future(542),
   });
   const { data: samOverlap } = await makeSession(u.alice, {
     spots_total: 3,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(541),
     ends_at: future(543),
   });
@@ -588,7 +626,7 @@ async function testConcurrentJoins(u: Record<string, UserHandle>) {
   // carol and sam both try to grab it at the same time.
   const { data: raceSession } = await makeSession(u.bob, {
     spots_total: 2,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(600),
     ends_at: future(602),
   });
@@ -640,7 +678,7 @@ async function testMemberDeparture(u: Record<string, UserHandle>) {
   // 2-spot session: bob hosts (1 spot left), carol joins (0 spots, full).
   const { data: spotSession } = await makeSession(u.bob, {
     spots_total: 2,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(700),
     ends_at: future(702),
   });
@@ -684,7 +722,7 @@ async function testMemberDeparture(u: Record<string, UserHandle>) {
   // Bob leaves → carol (earliest joined_at) should become host.
   const { data: successionSession } = await makeSession(u.bob, {
     spots_total: 3,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(710),
     ends_at: future(712),
   });
@@ -742,7 +780,7 @@ async function testMemberDeparture(u: Record<string, UserHandle>) {
   // ── 7c: Session deleted when last member leaves ──
   const { data: soloSession } = await makeSession(u.bob, {
     spots_total: 2,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(720),
     ends_at: future(722),
   });
@@ -779,7 +817,7 @@ async function testCancellationProtection(u: Record<string, UserHandle>) {
 
   // Solo host can cancel their own session.
   const { data: solo } = await makeSession(u.alice, {
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(800),
     ends_at: future(802),
   });
@@ -794,7 +832,7 @@ async function testCancellationProtection(u: Record<string, UserHandle>) {
   // Group session: host cannot cancel once a 2nd member has joined.
   const { data: group } = await makeSession(u.alice, {
     spots_total: 3,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(810),
     ends_at: future(812),
   });
@@ -830,7 +868,7 @@ async function testSuspension(u: Record<string, UserHandle>) {
 
   // Create an active session for carol before she's suspended.
   const { data: carolSession } = await makeSession(u.carol, {
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(900),
     ends_at: future(902),
   });
@@ -872,7 +910,7 @@ async function testSuspension(u: Record<string, UserHandle>) {
   // Suspended carol cannot join a new session.
   const { data: joinTarget } = await makeSession(u.bob, {
     spots_total: 3,
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(910),
     ends_at: future(912),
   });
@@ -888,7 +926,7 @@ async function testSuspension(u: Record<string, UserHandle>) {
 
   // Suspended carol cannot create a session (RLS INSERT policy).
   const { error: createErr } = await makeSession(u.carol, {
-    course_id: COURSE.CSC207,
+    course_id: csc207,
     starts_at: future(920),
     ends_at: future(922),
   });
@@ -1092,13 +1130,17 @@ async function testChatGracePeriod(u: Record<string, UserHandle>) {
       .eq("id", 1);
 
     if (limitsErr) {
-      assert(false, "Could not raise limits for chat grace-period test", limitsErr.message);
+      assert(
+        false,
+        "Could not raise limits for chat grace-period test",
+        limitsErr.message,
+      );
       return;
     }
 
     const { data: testSession, error: sessionErr } = await makeSession(u.bob, {
       spots_total: 2,
-      course_id: COURSE.CSC207,
+      course_id: csc207,
       starts_at: future(2000),
       ends_at: future(2001),
     });
@@ -1117,7 +1159,11 @@ async function testChatGracePeriod(u: Record<string, UserHandle>) {
     });
 
     if (joinErr) {
-      assert(false, "Could not join session for chat grace-period test", joinErr.message);
+      assert(
+        false,
+        "Could not join session for chat grace-period test",
+        joinErr.message,
+      );
       return;
     }
 
@@ -1219,10 +1265,10 @@ async function testCourseLimits(u: Record<string, UserHandle>) {
 
   // Alice is enrolled in 2 courses. Add 4 more to reach 6.
   const extraCourses = [
-    COURSE.CSC258,
-    COURSE.CSC263,
-    COURSE.MAT102,
-    COURSE.MAT232,
+    csc258,
+    csc263,
+    mat102,
+    mat232,
   ];
   for (const courseId of extraCourses) {
     await admin
@@ -1242,7 +1288,7 @@ async function testCourseLimits(u: Record<string, UserHandle>) {
   // 7th course should be rejected.
   const { error: limitErr } = await admin.from("user_courses").insert({
     user_id: u.alice.userId,
-    course_id: COURSE.STA256,
+    course_id: sta256,
   });
   assert(!!limitErr, "7th course insertion rejected (check_max_courses_limit)");
 
@@ -1260,6 +1306,13 @@ async function main() {
   console.log("\n╔══════════════════════════════════════════╗");
   console.log("║   StudyMeet — Phase 2 Test Suite         ║");
   console.log("╚══════════════════════════════════════════╝");
+
+   try {
+    await initializeCourseIds();
+  } catch (error) {
+    console.error("Failed to initialize course IDs:", error);
+    process.exit(1);
+  }
 
   console.log("\n  Signing in as all test users...");
   let u: Record<string, UserHandle>;
@@ -1302,6 +1355,15 @@ async function main() {
     await testChatGracePeriod(u);
     await testCourseLimits(u);
   } finally {
+    await admin
+      .from("app_settings")
+      .update({
+        n_host_cap: 2,
+        n_total_cap: 4,
+        chat_grace_period_days: 3,
+      })
+      .eq("id", 1);
+
     process.stdout.write("\n  Cleaning up test data...");
     await cleanup();
     console.log(" done");
