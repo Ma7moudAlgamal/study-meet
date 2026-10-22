@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js'
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.production' })
 
-// Uses your LOCAL supabase credentials — never run this against production
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, // the secret key, not publishable
@@ -17,6 +16,21 @@ async function getCourseId(code: string): Promise<string> {
     .single()
   if (error || !data) throw new Error(`Course not found: ${code}`)
   return data.id
+}
+
+async function findAuthUserId(email: string): Promise<string | undefined> {
+  for (let page = 1; ; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: 1000,
+    })
+
+    if (error) throw error
+
+    const existing = data.users.find(user => user.email?.toLowerCase() === email.toLowerCase())
+    if (existing) return existing.id
+    if (data.users.length < 1000) return undefined
+  }
 }
 
 const TEST_USERS = [
@@ -93,42 +107,61 @@ async function seedUsers() {
   for (const user of TEST_USERS) {
     console.log(`\nCreating ${user.email}...`)
 
-    // createUser goes through Auth properly, which fires your
-    // handle_new_user() trigger — same path as a real signup
+    const userMetadata = {
+      first_name: user.first_name,
+      last_name: user.last_name,
+      gender: user.gender,
+    }
     const { data, error } = await supabase.auth.admin.createUser({
       email: user.email,
       password: user.password,
       email_confirm: true, // skip the magic link step for test accounts
-      user_metadata: {
-        first_name: user.first_name,
-        last_name: user.last_name,
-        gender: user.gender,
-      },
+      user_metadata: userMetadata,
     })
 
-    if (error) {
-      console.error(`  ✗ Auth error for ${user.email}:`, error.message)
-      continue
-    }
-
-    const userId = data.user.id
-    console.log(`  ✓ Auth user created: ${userId}`)
-
-    // Set is_admin if needed — direct DB update, safe since this is seeding
-    if (user.is_admin) {
-      const { error: adminError } = await supabase
-        .from('users')
-        .update({ is_admin: true })
-        .eq('id', userId)
-
-      if (adminError) {
-        console.error(`  ✗ Failed to set is_admin:`, adminError.message)
-      } else {
-        console.log(`  ✓ is_admin set to true`)
+    let userId = data.user?.id
+    if (error || !userId) {
+      const existingUserId = await findAuthUserId(user.email)
+      if (!existingUserId) {
+        throw new Error(`Auth user creation failed for ${user.email}: ${error?.message ?? 'no user returned'}`)
       }
+
+      const { error: updateError } = await supabase.auth.admin.updateUserById(existingUserId, {
+        password: user.password,
+        email_confirm: true,
+        user_metadata: userMetadata,
+      })
+      if (updateError) {
+        throw new Error(`Auth user update failed for ${user.email}: ${updateError.message}`)
+      }
+      userId = existingUserId
+      console.log(`  ✓ Existing auth user updated`)
+    } else {
+      console.log(`  ✓ Auth user created`)
     }
 
-    // Enroll in courses using mapped IDs
+    const { error: profileError } = await supabase.from('users').upsert({
+      id: userId,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      gender: user.gender,
+      is_admin: user.is_admin,
+    }, { onConflict: 'id' })
+
+    if (profileError) {
+      throw new Error(`Profile creation failed for ${user.email}: ${profileError.message}`)
+    }
+    console.log(`  ✓ Profile created`)
+
+    const { error: deleteCoursesError } = await supabase
+      .from('user_courses')
+      .delete()
+      .eq('user_id', userId)
+    if (deleteCoursesError) {
+      throw new Error(`Could not reset courses for ${user.email}: ${deleteCoursesError.message}`)
+    }
+
     const userCourseIds = user.courseCodes.map(code => courseMap[code])
     const enrollments = userCourseIds.map(courseId => ({
       user_id: userId,
@@ -140,13 +173,15 @@ async function seedUsers() {
       .insert(enrollments)
 
     if (courseError) {
-      console.error(`  ✗ Course enrollment error:`, courseError.message)
-    } else {
-      console.log(`  ✓ Enrolled in ${user.courseCodes.length} courses`)
+      throw new Error(`Course enrollment failed for ${user.email}: ${courseError.message}`)
     }
+    console.log(`  ✓ Enrolled in ${user.courseCodes.length} courses`)
   }
 
   console.log('\nDone.')
 }
 
-seedUsers()
+seedUsers().catch((error: unknown) => {
+  console.error('Failed to seed test users:', error)
+  process.exitCode = 1
+})
