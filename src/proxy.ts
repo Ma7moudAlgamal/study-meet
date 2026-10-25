@@ -41,6 +41,13 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isSignInRoute = pathname === "/sign-in";
+  const authError = request.nextUrl.searchParams.get("error");
+  const isKnownAuthError = new Set([
+    "missing_code",
+    "authentication_failed",
+    "user_not_found",
+    "profile_fetch_failed",
+  ]).has(authError ?? "");
   const isProtectedPage =
     pathname === "/onboarding" ||
     pathname === "/feed" ||
@@ -51,7 +58,7 @@ export async function proxy(request: NextRequest) {
     return redirectWithCookies(signInUrl);
   }
 
-  if (isSignInRoute && user) {
+  if (isSignInRoute && user && !isKnownAuthError) {
     const destination = new URL("/onboarding", request.url);
     return redirectWithCookies(destination);
   }
