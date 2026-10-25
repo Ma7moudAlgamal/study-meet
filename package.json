@@ -11,7 +11,8 @@
     "test:phase02": "tsx scripts/test-phase02.ts",
     "test:onboarding-migration": "tsx scripts/test-onboarding-migration.ts",
     "test:cloud-cleanup": "tsx scripts/cloud-cleanup.ts",
-    "seed:delete-users": "tsx scripts/delete-seed-users.ts"
+    "seed:delete-users": "tsx scripts/delete-seed-users.ts",
+    "db:clean-users": "tsx scripts/clean-local-users.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
